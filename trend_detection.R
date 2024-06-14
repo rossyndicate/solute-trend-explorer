@@ -31,7 +31,7 @@ flux <- read_feather(here('ms_flux_annual', target_domain,
                           'stream_flux', paste0(target_site, '.feather'))) %>%
     filter(var == paste0('GN_', target_solute),
            ms_recommended == 1)
-    if(nrow(flux<16)){next}else{
+    if(nrow(flux>14)){
 # Read in data from the larger dataset #####
 q <- ms_load_product(
     macrosheds_root = macrosheds_root,
@@ -73,6 +73,7 @@ loop_frame <- tibble(domain = target_domain,
        flux_trend_slope = flux_model$coefficients[2,1],
        flux_trend_p = flux_model$coefficients[2,4] ,
        flux_trend_r_squared = flux_model$r.squared)
-rbind(out_frame, loop_frame)
+out_frame <- rbind(out_frame, loop_frame)
     } #end data checking if/else
+else{next}
 }# end loop
