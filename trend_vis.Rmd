@@ -11,15 +11,24 @@ knitr::opts_chunk$set(echo = TRUE,
                       tidy = TRUE,
                       warning = F,
                       message = F)
-
-
+# needed packages
 library(here)
 library(tidyverse)
 library(lubridate)
 library(mapview)
 library(sf)
+library(tigris)
+library(RColorBrewer)
+library(leaflet)
+library(sp)
+library(ggthemes)
+library(macrosheds)
 
+# source model fitting function
 source('analyze_trend.R')
+
+# set color ramps
+colors = colorRampPalette(c('blue', 'dark red'))
 
 ```
 
@@ -45,14 +54,15 @@ The 'analyze_trend' function calculates annual and seasonal trends for sites tha
 
 - There are at least 3 samples in 10 or more seasons
 
+The function then applies 5 linear models (annual + four seasons) across mean, low (5% percentile value), and high concentrations for each time period. The function uses USGS water years for annual aggregation and simple, three month periods for each season.
+
 # Summarizing trends
 
-```{r, include = F}
-trends <- read_csv(here('trends','SO4_S_trends.csv')) %>%
-    rbind(.,read_csv(here('trends','DOC_trends.csv'))) %>%
-    rbind(.,read_csv(here('trends','pH_trends.csv'))) 
-```
 ```{r}
+trends <- read_csv(here('trends','SO4_S_trends.csv'), show_col_types = FALSE) %>%
+    rbind(.,read_csv(here('trends','DOC_trends.csv'), show_col_types = FALSE)) %>%
+    rbind(.,read_csv(here('trends','pH_trends.csv'), show_col_types = FALSE)) 
+
 site_data <- ms_load_sites()
 
 sf_trends <- trends %>%
@@ -67,10 +77,57 @@ sf_trends %>%
     mapview(.,
             zcol = 'n_ann',
             legend = T,
-            label = 'domain_fullname')
+            label = 'domain_fullname',
+            layer.name = 'Years of data')
 ```
 
 
+The map above shows good national coverage. Sites are colored by years of data available. 
+
+# Trends in DOC
+
+First, let's take a look at how annual DOC has been trending in the MS database:
+
+```{r}
+so4_ann <- sf_trends %>%
+    filter(solute == 'SO4_S') %>%
+    select(domain_fullname, site, n_ann, 
+           slope_ann_mean, p_ann_mean, rsquared_ann_mean, geometry)
+
+ggplot(so4_ann)+
+    geom_histogram(aes(x = slope_ann_mean)) +
+    labs(x = 'Slope of trendline',
+         caption = paste('n=',nrow(so4_ann))) +
+    theme_few()
+
+mapview(so4_ann,
+        zcol = 'slope_ann_mean',
+        legend = T,
+        label = 'domain_fullname',
+        layer.name = 'Trend',
+        col.regions= colors)
+```
+
+The same map with only significant (p value < 0.05) trends:
+```{r}
+so4_ann_sig <- so4_ann %>%
+    filter(p_ann_mean < 0.05)
+
+print(paste('Ratio of signifcant to total trends is ', signif(nrow(so4_ann_sig)/nrow(so4_ann), digits = 2)))
+
+ggplot(so4_ann_sig)+
+    geom_histogram(aes(x = slope_ann_mean)) +
+    labs(x = 'Slope of trendline',
+         caption = paste('n=',nrow(so4_ann_sig))) +
+    theme_few()
+
+mapview(so4_ann_sig,
+        zcol = 'slope_ann_mean',
+        legend = T,
+        label = 'domain_fullname',
+        layer.name = 'Trend',
+        col.regions= colors)
+```
 
 
 
