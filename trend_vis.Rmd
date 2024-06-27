@@ -5,22 +5,31 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+knitr::opts_chunk$set(echo = TRUE, 
+                      include = TRUE,
+                      tidy.opts = list(width.cutoff = 60), 
+                      tidy = TRUE,
+                      warning = F,
+                      message = F)
 
 
 library(here)
 library(tidyverse)
 library(lubridate)
+library(mapview)
+library(sf)
 
 source('analyze_trend.R')
 
 ```
 
-Scope: provide a high level analysis of trends in riverine solute concentrations throughout the macrosheds database. 
+# Scope
+Provide a high level analysis of trends in riverine solute concentrations throughout the MS database. 
 
-After running load_data, you can run the following functions to generate the trends data set.
+# Calculate Trends
+After running load_data, you can run the following functions to generate the trends data set. The function will apply to all the sites you have downloaded in your MS data directory.
 
-```{r, include=T}
+```{r}
 #analyze_trend(target_solute = 'SO4_S', ms_root = here('ms_data'))
 #analyze_trend(target_solute = 'pH', ms_root = here('ms_data'))
 #analyze_trend(target_solute = 'DOC', ms_root = here('ms_data'))
@@ -35,6 +44,32 @@ The 'analyze_trend' function calculates annual and seasonal trends for sites tha
 - Data across at least 3 seasons
 
 - There are at least 3 samples in 10 or more seasons
+
+# Summarizing trends
+
+```{r, include = F}
+trends <- read_csv(here('trends','SO4_S_trends.csv')) %>%
+    rbind(.,read_csv(here('trends','DOC_trends.csv'))) %>%
+    rbind(.,read_csv(here('trends','pH_trends.csv'))) 
+```
+```{r}
+site_data <- ms_load_sites()
+
+sf_trends <- trends %>%
+    left_join(., site_data, by = c('site' = 'site_code', 'domain')) %>%
+    filter(!is.na(longitude),
+           !is.na(latitude)) %>%
+    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
+
+sf_trends %>%
+    select(domain_fullname, site, n_ann, geometry) %>%
+    distinct() %>%
+    mapview(.,
+            zcol = 'n_ann',
+            legend = T,
+            label = 'domain_fullname')
+```
+
 
 
 

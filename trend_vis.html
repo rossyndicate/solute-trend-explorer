@@ -368,10 +368,16 @@ pre code {
 </div>
 
 
-<p>Scope: provide a high level analysis of trends in riverine solute
-concentrations throughout the macrosheds database.</p>
+<div id="scope" class="section level1">
+<h1>Scope</h1>
+<p>Provide a high level analysis of trends in riverine solute
+concentrations throughout the MS database.</p>
+</div>
+<div id="calculate-trends" class="section level1">
+<h1>Calculate Trends</h1>
 <p>After running load_data, you can run the following functions to
-generate the trends data set.</p>
+generate the trends data set. The function will apply to all the sites
+you have downloaded in your MS data directory.</p>
 <pre class="r"><code>#analyze_trend(target_solute = &#39;SO4_S&#39;, ms_root = here(&#39;ms_data&#39;))
 #analyze_trend(target_solute = &#39;pH&#39;, ms_root = here(&#39;ms_data&#39;))
 #analyze_trend(target_solute = &#39;DOC&#39;, ms_root = here(&#39;ms_data&#39;))</code></pre>
@@ -384,6 +390,37 @@ are</p>
 <li><p>Data across at least 3 seasons</p></li>
 <li><p>There are at least 3 samples in 10 or more seasons</p></li>
 </ul>
+</div>
+<div id="summarizing-trends" class="section level1">
+<h1>Summarizing trends</h1>
+<pre class="r"><code>trends &lt;- read_csv(here(&#39;trends&#39;,&#39;SO4_S_trends.csv&#39;)) %&gt;%
+    rbind(.,read_csv(here(&#39;trends&#39;,&#39;DOC_trends.csv&#39;))) %&gt;%
+    rbind(.,read_csv(here(&#39;trends&#39;,&#39;pH_trends.csv&#39;))) </code></pre>
+<pre><code>## Rows: 71 Columns: 49
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;,&quot;
+## chr  (3): domain, site, solute
+## dbl (46): n_ann, slope_ann_mean, p_ann_mean, rsquared_ann_mean, slope_ann_lo...
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+## Rows: 47 Columns: 49
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;,&quot;
+## chr  (3): domain, site, solute
+## dbl (46): n_ann, slope_ann_mean, p_ann_mean, rsquared_ann_mean, slope_ann_lo...
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+## Rows: 70 Columns: 49
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;,&quot;
+## chr  (3): domain, site, solute
+## dbl (46): n_ann, slope_ann_mean, p_ann_mean, rsquared_ann_mean, slope_ann_lo...
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
 
 
 
