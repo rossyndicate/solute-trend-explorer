@@ -14,10 +14,7 @@ library(feather)
 # Set up MS package and load data from it #####
 macrosheds_root <- here('ms_data')
 ms_download_core_data(macrosheds_root = here('ms_data'),
-                      networks = 'lter')
-
-ms_download_ws_attr(macrosheds_root = macrosheds_root)
-summaries <- read_feather(here('ms_data', 'watershed_summaries.feather'))
+                      networks = 'all')
 
 # uncomment below to load ms data (takes a while)
 #ms_download_core_data(macrosheds_root = macrosheds_root, networks = 'lter', quiet = FALSE)

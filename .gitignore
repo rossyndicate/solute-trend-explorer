@@ -1,4 +1,4 @@
 .httr-oauth
 .Rproj.user
-./ms_data/
-./ms_flux_annual/
+ms_data/
+ms_flux_annual/
