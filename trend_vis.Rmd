@@ -1,0 +1,41 @@
+---
+title: "MacroSheds Solute Trends"
+author: "Nick Gubbins"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+
+
+library(here)
+library(tidyverse)
+library(lubridate)
+
+source('analyze_trend.R')
+
+```
+
+Scope: provide a high level analysis of trends in riverine solute concentrations throughout the macrosheds database. 
+
+After running load_data, you can run the following functions to generate the trends data set.
+
+```{r, include=T}
+#analyze_trend(target_solute = 'SO4_S', ms_root = here('ms_data'))
+#analyze_trend(target_solute = 'pH', ms_root = here('ms_data'))
+#analyze_trend(target_solute = 'DOC', ms_root = here('ms_data'))
+```
+
+The 'analyze_trend' function calculates annual and seasonal trends for sites that meet the required data cutoffs. The current cutoffs are
+
+- Site is in the CONUS
+
+- Data across at least 10 water years
+
+- Data across at least 3 seasons
+
+- There are at least 3 samples in 10 or more seasons
+
+
+
+

@@ -1,10 +1,16 @@
+analyze_trend <- function(target_solute, ms_root){
+
 library(tidyverse)
 library(feather)
 library(macrosheds)
 library(lubridate)
 library(here)
 library(lfstat)
-macrosheds_root <- here('ms_data')
+macrosheds_root <- ms_root
+target_solute <- target_solute
+
+# Suppress summarise info
+options(dplyr.summarise.inform = FALSE)
 
 #functions for later #####
 aggregate_seasonal_data <- function(target_season){
@@ -89,10 +95,6 @@ out_frame <- tibble(
     slope_f_high = as.numeric(),
     p_f_high = as.numeric(),
     rsquared_f_high = as.numeric())
-
-
-# Select targets #####
-target_solute = 'SO4_S'
 
 # find sites with data ####
 
@@ -362,3 +364,8 @@ if(length(site_list > 0)){
 }# end site list length check
 else{next}
 }# end domain loop
+
+out_path <- here('trends', paste0(target_solute,'_trends.csv'))
+write_csv(out_frame, file = out_path)
+print(paste('Output saved to ',out_path))
+}
