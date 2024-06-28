@@ -2,13 +2,15 @@
 title: "MacroSheds Solute Trends"
 author: "Nick Gubbins"
 output: html_document
+toc: TRUE
+theme: united
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, 
                       include = TRUE,
                       tidy.opts = list(width.cutoff = 60), 
-                      tidy = TRUE,
+                      #tidy = TRUE,
                       warning = F,
                       message = F)
 # needed packages
@@ -23,6 +25,7 @@ library(leaflet)
 library(sp)
 library(ggthemes)
 library(macrosheds)
+library(tidyr)
 
 # source model fitting function
 source('analyze_trend.R')
@@ -84,50 +87,372 @@ sf_trends %>%
 
 The map above shows good national coverage. Sites are colored by years of data available. 
 
-# Trends in DOC
 
-First, let's take a look at how annual DOC has been trending in the MS database:
+```{r,include=F}
+visulaize_trends <- function(solute, metric, annual, significant_only){
 
-```{r}
-so4_ann <- sf_trends %>%
-    filter(solute == 'SO4_S') %>%
-    select(domain_fullname, site, n_ann, 
-           slope_ann_mean, p_ann_mean, rsquared_ann_mean, geometry)
+    target_solute <- solute #whatever you have data on
+    target_annual <- annual # 1 or 0
+    sig_check <- significant_only # 1 or 0
+    target_metric <- metric #high, low, mean
 
-ggplot(so4_ann)+
-    geom_histogram(aes(x = slope_ann_mean)) +
-    labs(x = 'Slope of trendline',
-         caption = paste('n=',nrow(so4_ann))) +
-    theme_few()
+target_trends <- sf_trends %>%
+        filter(solute == target_solute) 
+    
+if(target_annual == 1){
+    # for annual cases
+    # get data together 
+    target_trends <- target_trends %>%
+        select(domain_fullname, site,
+               contains(paste0('_ann_',target_metric)),
+               geometry)
+    
+    #remove suffix
+    colnames(target_trends) <- gsub(paste0('_',target_metric),'',colnames(target_trends))
+    
+    # check and filter for sig only trends
+    if(significant_only == 1){target_trends <- filter(target_trends, p_ann < 0.05)}
+    else{target_trends <- target_trends}
+    
+    # make plot
+    trend_plot <- ggplot(target_trends)+
+        geom_histogram(aes(x = slope_ann)) +
+        labs(x = 'Slope of trendline',
+             title = paste(target_metric, '', target_solute)) +
+        theme_few()
+    
+    # add caption to plot + show if sig or all
+    if(significant_only == 1){trend_plot<- trend_plot + labs(caption = paste('n=',nrow(target_trends),'(signifcant only)'))}
+    else{trend_plot <- trend_plot + labs(caption = paste('n=',nrow(target_trends)))}
+    
+    # make map
+    ann_map <- mapview(target_trends,
+            zcol = 'slope_ann',
+            legend = T,
+            label = 'domain_fullname',
+            layer.name = 'Trend',
+            col.regions= colors)
+    
+    plot_list <- list(trend_plot, ann_map)
+    return(plot_list)
+    } # end annual if statement
+    else{
+    
+    # grab seasonal data
+    target_trends <- target_trends %>%
+        select(domain_fullname, site,
+               contains(paste0('_f_',target_metric)),
+               contains(paste0('_su_',target_metric)),
+               contains(paste0('_sp_',target_metric)),
+               contains(paste0('_w_',target_metric)),
+               geometry)
+    
+    # drop suffix
+    colnames(target_trends) <- gsub(paste0('_',target_metric),'',colnames(target_trends))
+    
+    
+    # pivot into sensible format for graphing
+    target_trends <- target_trends %>%
+        # Stack metric/season info
+        pivot_longer(names_to = "metric_season", values_to = "value",
+                     cols = contains(c("p_", 'rsquared_', 'slope_'))) %>%
+        # Separate metric and season
+        separate(sep = "_", col = metric_season, into = c("metric", "season")) %>%
+        # Create separate cols for each metric
+        pivot_wider(names_from = "metric", values_from = "value")
 
-mapview(so4_ann,
-        zcol = 'slope_ann_mean',
-        legend = T,
-        label = 'domain_fullname',
-        layer.name = 'Trend',
-        col.regions= colors)
+    #check and filter for sig trends only
+    if(significant_only == 1){target_trends <- filter(target_trends, p < 0.05)}
+    else{target_trends <- target_trends}
+    
+    # make plot
+    trend_plot <- ggplot(target_trends)+
+        geom_histogram(aes(x = slope)) +
+        labs(x = 'Slope of trendline',
+             title = paste(target_metric, '', target_solute)) +
+        facet_wrap(~season)+
+        theme_few()
+    
+    # add caption to plot + show if sig or all
+    if(significant_only == 1){trend_plot<- trend_plot + labs(caption = paste('n=',nrow(target_trends),'(signifcant only)'))}
+    else{trend_plot <- trend_plot + labs(caption = paste('n=',nrow(target_trends)))}
+
+    # make maps
+    f_map <- target_trends %>%
+        filter(season == 'f') %>%
+        st_as_sf() %>%
+    mapview(.,
+            zcol = 'slope',
+            legend = T,
+            label = 'domain_fullname',
+            layer.name = 'Fall Trend',
+            col.regions= colors)
+    
+
+    w_map <- target_trends %>%
+        filter(season == 'w') %>%
+        st_as_sf() %>%
+    mapview(.,
+            zcol = 'slope',
+            legend = T,
+            label = 'domain_fullname',
+            layer.name = 'Winter Trend',
+            col.regions= colors)
+    
+    sp_map <- target_trends %>%
+        filter(season == 'sp') %>%
+        st_as_sf() %>%
+    mapview(.,
+            zcol = 'slope',
+            legend = T,
+            label = 'domain_fullname',
+            layer.name = 'Spring Trend',
+            col.regions= colors)
+    
+    su_map <- target_trends %>%
+        filter(season == 'su') %>%
+        st_as_sf() %>%
+    mapview(.,
+            zcol = 'slope',
+            legend = T,
+            label = 'domain_fullname',
+            layer.name = 'Summer Trend',
+            col.regions= colors)
+    plot_list <- list(trend_plot, f_map, w_map, sp_map, su_map)
+    return(plot_list)
+            # print(paste('Fall', target_solute, '(', target_metric, ')')),
+            # f_map,
+            # print(paste('Winter', target_solute, '(', target_metric, ')')),
+            # w_map,
+            # print(paste('Spring', target_solute, '(', target_metric, ')')),
+            # sp_map,
+            # print(paste('Summer', target_solute, '(', target_metric, ')')),
+            # su_map
+    #)
+    } #end seasonal else
+}# end function
+
 ```
 
-The same map with only significant (p value < 0.05) trends:
-```{r}
-so4_ann_sig <- so4_ann %>%
-    filter(p_ann_mean < 0.05)
+# Annual DOC Trends
 
-print(paste('Ratio of signifcant to total trends is ', signif(nrow(so4_ann_sig)/nrow(so4_ann), digits = 2)))
+## Mean
 
-ggplot(so4_ann_sig)+
-    geom_histogram(aes(x = slope_ann_mean)) +
-    labs(x = 'Slope of trendline',
-         caption = paste('n=',nrow(so4_ann_sig))) +
-    theme_few()
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'mean', 
+                 annual = 1, significant_only = 1)
 
-mapview(so4_ann_sig,
-        zcol = 'slope_ann_mean',
-        legend = T,
-        label = 'domain_fullname',
-        layer.name = 'Trend',
-        col.regions= colors)
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## High
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'high', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## Low
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'low', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+# Seasonal DOC Trends
+
+## Mean
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'mean', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+## High
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'high', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
 ```
 
 
+## Low
 
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'DOC', metric = 'low', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+# Annual pH Trends
+
+## Mean
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'pH', metric = 'mean', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## High
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'pH', metric = 'high', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## Low
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'pH', metric = 'low', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+# Seasonal pH Trends
+
+## Mean
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'pH', metric = 'mean', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+## High
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'pH', metric = 'high', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+
+## Low
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'pH', metric = 'low', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+
+# Annual SO4_S Trends
+
+## Mean
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'mean', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## High
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'high', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+## Low
+
+```{r, echo = F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'low', 
+                 annual = 1, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+```
+
+# Seasonal SO4_S Trends
+
+## Mean
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'mean', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+## High
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'high', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
+
+
+## Low
+
+```{r, echo=F}
+plots <- visulaize_trends(solute = 'SO4_S', metric = 'low', 
+                 annual = 0, significant_only = 1)
+
+plots[1][[1]]
+plots[2][[1]]
+plots[3][[1]]
+plots[4][[1]]
+plots[5][[1]]
+```
