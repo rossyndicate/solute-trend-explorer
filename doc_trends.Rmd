@@ -216,7 +216,7 @@ colors = colorRampPalette(c('blue', 'dark red'))
 
 p_all <- lapply(map_data$site_code, sc_plotter)
 
-test <- map_data %>%
+map_data <- map_data %>%
     mutate(mean_plots = map(site_code, sc_plotter))
 
 mapviewOptions(fgb = F)
@@ -225,7 +225,7 @@ m1 <- mapview(map_data,
                cex = 'n',
                label = 'domain',
                col.regions= colors,
-               popup = leafpop::popupGraph(test$mean_plots))
+               popup = leafpop::popupGraph(map_data$mean_plots))
 m1
 
 
