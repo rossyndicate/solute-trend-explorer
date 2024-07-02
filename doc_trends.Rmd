@@ -30,6 +30,7 @@ library(tidyr)
 library(trend)
 library(feather)
 library(lfstat)
+library(mapview)
 
 # set color ramps
 colors = colorRampPalette(c('blue', 'dark red'))
@@ -106,6 +107,7 @@ plot_annual <- function(con_ann){ggplot(con_ann, aes(x = wy, y = doc))+
 plot_ann <- plot_annual(con_ann)
 plot_ann
 ```
+
 Now detect trends and add to the plot
 
 ```{r}
@@ -133,6 +135,10 @@ out_res <- tibble(site_code = as.character(),
                     slope = as.numeric(),
                     p = as.numeric(),
                     n = as.numeric())
+out_data <- tibble(site_code = as.character(),
+                   wy = as.numeric(),
+                   n = as.numeric(),
+                   doc = as.numeric())
 for(i in 1:length(site_list)){
 # load  and prep data
 site_path <- site_list[i]
@@ -150,10 +156,13 @@ sig_check <- ss$p.value < 0.05
 
 slope_est <- signif(ss$estimates[[1]], digits = 3)
 
-loop_frame <- tibble(site_code = site,
+loop_res <- tibble(site_code = site,
                     slope = ss$estimates[[1]],
                     p = ss$p.value[[1]],
                     n = nrow(con_ann))
+
+loop_data <- con_ann %>%
+    mutate(site_code = site)
 
 }else{next}
 
@@ -172,8 +181,9 @@ plot_ann <- plot_ann +
 
 # save to a list
 out_list[[i]] <- list(site = site, data = con_ann, plot = plot_ann, model = ss)
-#save to frame
-out_res <- rbind(out_res,loop_frame)
+#save to frames
+out_data <- rbind(out_data, loop_data)
+out_res <- rbind(out_res,loop_res)
 }
 good_list<-out_list[!sapply(out_list,is.null)]
 
@@ -182,24 +192,42 @@ good_list<-out_list[!sapply(out_list,is.null)]
 Now map the results
 
 ```{r}
-good_sites <- as.character()
-for(i in 1:length(good_list)){
-good_sites[i] <- good_list[[i]][[1]] 
-}
-good_sites
+# make plotter for popups
+sc_plotter <- function(site){
 
-map_data <- out_frame %>%
+  data <-filter(out_data, site_code == site)
+  slope_est <- out_res$slope[out_res$site_code == site]
+  p <- signif(out_res$p[out_res$site_code == site], digits = 2)
+
+  p <- plot_annual(data) +
+                labs(caption = paste("Sen's slope of", slope_est,
+                     'from', nrow(data), 'years of data. p =', p),
+                     title = site)
+  return(p)
+}
+
+# make map data
+map_data <- out_res %>%
     left_join(site_data, by = 'site_code') %>%
     st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
 
 # set color ramps
 colors = colorRampPalette(c('blue', 'dark red'))
 
-mapview(map_data,
-        zcol = "slope",
-        col.regions= colors,
-        cex = 'n',
-        label = 'domain')   
+p_all <- lapply(map_data$site_code, sc_plotter)
+
+test <- map_data %>%
+    mutate(mean_plots = map(site_code, sc_plotter))
+
+mapviewOptions(fgb = F)
+m1 <- mapview(map_data,
+               zcol = 'slope',
+               cex = 'n',
+               label = 'domain',
+               col.regions= colors,
+               popup = leafpop::popupGraph(test$mean_plots))
+m1
+
 
 ```
 
