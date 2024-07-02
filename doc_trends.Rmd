@@ -1,0 +1,205 @@
+---
+title: "DOC Trend Exploration"
+author: "Nick Gubbins"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      include = TRUE,
+                      tidy.opts = list(width.cutoff = 60), 
+                      #tidy = TRUE,
+                      warning = F,
+                      message = F)
+# needed packages
+library(here)
+library(tidyverse)
+library(lubridate)
+library(mapview)
+mapviewOptions(fgb = FALSE, georaster = FALSE)
+library(sf)
+library(tigris)
+library(RColorBrewer)
+library(leaflet)
+library(sp)
+library(ggthemes)
+library(macrosheds)
+library(tidyr)
+library(trend)
+library(feather)
+library(lfstat)
+
+# set color ramps
+colors = colorRampPalette(c('blue', 'dark red'))
+```
+
+# Set up MS data
+
+First find all data downloaded to MS directory.
+
+```{r}
+macrosheds_root <- here('ms_data')
+
+
+site_data <- ms_load_sites()
+domain_list <- list.dirs(macrosheds_root, recursive = F, full.names = F)
+```
+
+Then remove any domains outside of the CONUS.
+
+```{r}
+domain_list <- domain_list[!domain_list %in% c('arctic', 'mcmurdo', 'krycklan', 'luquillo')]
+```
+
+
+Make list of all site files.
+
+```{r}
+site_list <- as.character()
+for(i in domain_list){
+    loop_sites <- list.files(here('ms_data', i, 'stream_chemistry'),
+                                       pattern = '.feather$', full.names = T)
+    site_list <- c(site_list,loop_sites)
+    }
+```
+
+# Intro case at HJ Andrews
+
+Load data for a single site from HJ Andrews to show workflow
+
+```{r}
+site_path <- site_list[50]
+
+prep_con_data <- function(site_path){read_feather(site_path) %>%
+        filter(var == 'GN_DOC') %>%
+        select(site_code, datetime, val) %>%
+        na.omit()}
+con_prep <- prep_con_data(site_path)
+```
+
+Summarize to annual mean data and filter out years made from less than 12 observations
+
+```{r}
+nrow(con_prep)
+ 
+make_mean_annual <- function(con_prep){con_prep %>%
+        mutate(wy = as.integer(as.character(water_year(datetime, origin = 'usgs')))) %>%
+        group_by(wy) %>%
+        summarize(n = n(),
+                  doc = mean(val)) %>%
+    filter(n > 11)}
+
+con_ann <- make_mean_annual(con_prep)
+
+nrow(con_ann)
+```
+Plot data
+
+```{r}
+plot_annual <- function(con_ann){ggplot(con_ann, aes(x = wy, y = doc))+
+    geom_point() +
+        labs(y = 'Mean annual DOC')+
+    theme_few()}
+
+plot_ann <- plot_annual(con_ann)
+plot_ann
+```
+Now detect trends and add to the plot
+
+```{r}
+ss <- sens.slope(con_ann$doc)
+ss
+
+sig_check <- ss$p.value < 0.05
+
+slope_est <- signif(ss$estimates[[1]], digits = 3) 
+
+plot_ann <- plot_ann +
+                labs(caption = paste("Sen's slope of", slope_est,
+                     'from', nrow(con_ann), 'years of data.'))
+
+plot_ann
+```
+
+# Make national
+
+Now apply to all sites in the list
+
+```{r}
+out_list <- list()
+out_res <- tibble(site_code = as.character(),
+                    slope = as.numeric(),
+                    p = as.numeric(),
+                    n = as.numeric())
+for(i in 1:length(site_list)){
+# load  and prep data
+site_path <- site_list[i]
+
+con_prep <- prep_con_data(site_path)
+site <-  con_prep$site_code[1]
+# summarize data
+if(nrow(con_prep)>3){
+con_ann <- make_mean_annual(con_prep)
+# check for trends
+ss <- sens.slope(con_ann$doc)
+ss
+
+sig_check <- ss$p.value < 0.05
+
+slope_est <- signif(ss$estimates[[1]], digits = 3)
+
+loop_frame <- tibble(site_code = site,
+                    slope = ss$estimates[[1]],
+                    p = ss$p.value[[1]],
+                    n = nrow(con_ann))
+
+}else{next}
+
+# plot data
+if(nrow(con_ann) > 2){
+plot_ann <- plot_annual(con_ann)
+plot_ann   
+}else{next}
+
+# add plot captions
+if(sig_check == T){
+plot_ann <- plot_ann +
+                labs(caption = paste("Sen's slope of", slope_est,
+                     'from', nrow(con_ann), 'years of data.'))   
+}else{next}
+
+# save to a list
+out_list[[i]] <- list(site = site, data = con_ann, plot = plot_ann, model = ss)
+#save to frame
+out_res <- rbind(out_res,loop_frame)
+}
+good_list<-out_list[!sapply(out_list,is.null)]
+
+```
+
+Now map the results
+
+```{r}
+good_sites <- as.character()
+for(i in 1:length(good_list)){
+good_sites[i] <- good_list[[i]][[1]] 
+}
+good_sites
+
+map_data <- out_frame %>%
+    left_join(site_data, by = 'site_code') %>%
+    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
+
+# set color ramps
+colors = colorRampPalette(c('blue', 'dark red'))
+
+mapview(map_data,
+        zcol = "slope",
+        col.regions= colors,
+        cex = 'n',
+        label = 'domain')   
+
+```
+
