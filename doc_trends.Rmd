@@ -72,12 +72,15 @@ Load data for a single site from HJ Andrews to show workflow
 
 ```{r}
 site_path <- site_list[50]
+solute <- 'DOC'
 
-prep_con_data <- function(site_path){read_feather(site_path) %>%
-        filter(var == 'GN_DOC') %>%
+prep_con_data <- function(site_path, solute){
+    target_sol <- paste0('GN_', solute)
+    read_feather(site_path) %>%
+        filter(var == target_sol) %>%
         select(site_code, datetime, val) %>%
         na.omit()}
-con_prep <- prep_con_data(site_path)
+con_prep <- prep_con_data(site_path, solute)
 ```
 
 Summarize to annual mean data and filter out years made from less than 12 observations
@@ -89,7 +92,7 @@ make_mean_annual <- function(con_prep){con_prep %>%
         mutate(wy = as.integer(as.character(water_year(datetime, origin = 'usgs')))) %>%
         group_by(wy) %>%
         summarize(n = n(),
-                  doc = mean(val)) %>%
+                  val = mean(val)) %>%
     filter(n > 11)}
 
 con_ann <- make_mean_annual(con_prep)
@@ -99,9 +102,9 @@ nrow(con_ann)
 Plot data
 
 ```{r}
-plot_annual <- function(con_ann){ggplot(con_ann, aes(x = wy, y = doc))+
+plot_annual <- function(con_ann){ggplot(con_ann, aes(x = wy, y = val))+
     geom_point() +
-        labs(y = 'Mean annual DOC')+
+        labs(y = paste0('Mean annual ', solute))+
     theme_few()}
 
 plot_ann <- plot_annual(con_ann)
@@ -111,7 +114,7 @@ plot_ann
 Now detect trends and add to the plot
 
 ```{r}
-ss <- sens.slope(con_ann$doc)
+ss <- sens.slope(con_ann$val)
 ss
 
 sig_check <- ss$p.value < 0.05
@@ -143,13 +146,13 @@ for(i in 1:length(site_list)){
 # load  and prep data
 site_path <- site_list[i]
 
-con_prep <- prep_con_data(site_path)
+con_prep <- prep_con_data(site_path, solute)
 site <-  con_prep$site_code[1]
 # summarize data
 if(nrow(con_prep)>3){
 con_ann <- make_mean_annual(con_prep)
 # check for trends
-ss <- sens.slope(con_ann$doc)
+ss <- sens.slope(con_ann$val)
 ss
 
 sig_check <- ss$p.value < 0.05
@@ -196,7 +199,7 @@ Now map the results
 sc_plotter <- function(site){
 
   data <-filter(out_data, site_code == site)
-  slope_est <- out_res$slope[out_res$site_code == site]
+  slope_est <- signif(out_res$slope[out_res$site_code == site], digits = 2)
   p <- signif(out_res$p[out_res$site_code == site], digits = 2)
 
   p <- plot_annual(data) +
@@ -219,7 +222,6 @@ p_all <- lapply(map_data$site_code, sc_plotter)
 map_data <- map_data %>%
     mutate(mean_plots = map(site_code, sc_plotter))
 
-mapviewOptions(fgb = F)
 m1 <- mapview(map_data,
                zcol = 'slope',
                cex = 'n',
@@ -230,4 +232,5 @@ m1
 
 
 ```
+
 
