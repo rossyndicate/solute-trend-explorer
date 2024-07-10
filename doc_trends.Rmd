@@ -103,12 +103,12 @@ nrow(con_ann)
 Plot data
 
 ```{r}
-plot_annual <- function(con_ann){ggplot(con_ann, aes(x = wy, y = val))+
+plot_annual <- function(con_ann, solute){ggplot(con_ann, aes(x = wy, y = val))+
     geom_point() +
         labs(y = paste0('Mean annual ', solute))+
     theme_few()}
 
-plot_ann <- plot_annual(con_ann)
+plot_ann <- plot_annual(con_ann, solute)
 plot_ann
 ```
 
@@ -181,7 +181,8 @@ out_list <- list(out_data, out_res)
 return(out_list)
 } # end function
 
-out_list <- ingest_national(site_list, 'DOC')
+solute <- 'DOC'
+out_list <- ingest_national(site_list, solute)
 out_res <- out_list[[2]]
 out_data <- out_list[[1]]
 
@@ -197,7 +198,7 @@ sc_plotter <- function(site){
   slope_est <- signif(out_res$slope[out_res$site_code == site], digits = 2)
   p <- signif(out_res$p[out_res$site_code == site], digits = 2)
 
-  p <- plot_annual(data) +
+  p <- plot_annual(data, solute) +
                 labs(caption = paste("Sen's slope of", slope_est,
                      'from', nrow(data), 'years of data. p =', p),
                      title = site)
@@ -242,7 +243,8 @@ m1
 # Apply to sulfate
 
 ```{r}
-out_list <- ingest_national(site_list, 'SO4_S')
+solute <- 'SO4_S'
+out_list <- ingest_national(site_list, solute)
 out_res <- out_list[[2]]
 out_data <- out_list[[1]]
 
@@ -256,7 +258,8 @@ m2
 # Apply to pH
 
 ```{r}
-out_list <- ingest_national(site_list, 'pH')
+solute <- 'pH'
+out_list <- ingest_national(site_list, solute)
 out_res <- out_list[[2]]
 out_data <- out_list[[1]]
 
