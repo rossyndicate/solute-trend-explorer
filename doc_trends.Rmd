@@ -4,6 +4,7 @@ author: "Nick Gubbins"
 output: html_document
 editor_options: 
   chunk_output_type: console
+toc: TRUE
 ---
 
 ```{r setup, include=FALSE}
@@ -128,11 +129,12 @@ plot_ann <- plot_ann +
 plot_ann
 ```
 
-# Make national
+# Make national DOC map
 
 Now apply to all sites in the list
 
 ```{r}
+ingest_national <- function(site_list, solute){
 out_list <- list()
 out_res <- tibble(site_code = as.character(),
                     slope = as.numeric(),
@@ -149,8 +151,11 @@ site_path <- site_list[i]
 con_prep <- prep_con_data(site_path, solute)
 site <-  con_prep$site_code[1]
 # summarize data
-if(nrow(con_prep)>3){
+if(nrow(con_prep)>4){
 con_ann <- make_mean_annual(con_prep)
+}else{next}
+
+if(nrow(con_ann) > 2){
 # check for trends
 ss <- sens.slope(con_ann$val)
 ss
@@ -168,31 +173,21 @@ loop_data <- con_ann %>%
     mutate(site_code = site)
 
 }else{next}
-
-# plot data
-if(nrow(con_ann) > 2){
-plot_ann <- plot_annual(con_ann)
-plot_ann   
-}else{next}
-
-# add plot captions
-if(sig_check == T){
-plot_ann <- plot_ann +
-                labs(caption = paste("Sen's slope of", slope_est,
-                     'from', nrow(con_ann), 'years of data.'))   
-}else{next}
-
-# save to a list
-out_list[[i]] <- list(site = site, data = con_ann, plot = plot_ann, model = ss)
 #save to frames
 out_data <- rbind(out_data, loop_data)
 out_res <- rbind(out_res,loop_res)
 }
-good_list<-out_list[!sapply(out_list,is.null)]
+out_list <- list(out_data, out_res)
+return(out_list)
+} # end function
+
+out_list <- ingest_national(site_list, 'DOC')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
 
 ```
 
-Now map the results
+Make functions to plot and map results
 
 ```{r}
 # make plotter for popups
@@ -210,27 +205,64 @@ sc_plotter <- function(site){
 }
 
 # make map data
-map_data <- out_res %>%
+make_map_data <- function(out_res){
+out_res %>%
     left_join(site_data, by = 'site_code') %>%
-    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
+    filter(!is.na(longitude), !is.na(latitude)) %>%
+    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)}
+
+map_data <- make_map_data(out_res)
 
 # set color ramps
 colors = colorRampPalette(c('blue', 'dark red'))
 
+# apply mapping and plotting
+make_map <- function(map_data){
 p_all <- lapply(map_data$site_code, sc_plotter)
 
 map_data <- map_data %>%
     mutate(mean_plots = map(site_code, sc_plotter))
 
-m1 <- mapview(map_data,
+mapview(map_data,
                zcol = 'slope',
                cex = 'n',
                label = 'domain',
                col.regions= colors,
                popup = leafpop::popupGraph(map_data$mean_plots))
-m1
-
-
+}
 ```
 
+Make the map!
 
+```{r}
+m1 <- make_map(map_data)
+m1
+```
+
+# Apply to sulfate
+
+```{r}
+out_list <- ingest_national(site_list, 'SO4_S')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m2 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m2
+```
+
+# Apply to pH
+
+```{r}
+out_list <- ingest_national(site_list, 'pH')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m3 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m3
+```
