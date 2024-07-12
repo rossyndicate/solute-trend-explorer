@@ -36,8 +36,9 @@ library(mapview)
 # set color ramps
 colors = colorRampPalette(c('blue', 'dark red'))
 ```
+# Concentration
 
-# Set up MS data
+## Set up MS data
 
 First find all data downloaded to MS directory.
 
@@ -67,7 +68,7 @@ for(i in domain_list){
     }
 ```
 
-# Intro case at HJ Andrews
+## Intro case at HJ Andrews
 
 Load data for a single site from HJ Andrews to show workflow
 
@@ -129,12 +130,12 @@ plot_ann <- plot_ann +
 plot_ann
 ```
 
-# Make national DOC map
+## Make national DOC map
 
 Now apply to all sites in the list
 
 ```{r}
-ingest_national <- function(site_list, solute){
+ingest_national <- function(site_list, solute, data_type){
 out_list <- list()
 out_res <- tibble(site_code = as.character(),
                     slope = as.numeric(),
@@ -148,12 +149,21 @@ for(i in 1:length(site_list)){
 # load  and prep data
 site_path <- site_list[i]
 
-con_prep <- prep_con_data(site_path, solute)
+if(data_type == 'con'){con_prep <- prep_con_data(site_path, solute)}
+else{ con_prep <- prep_flux_data(site_path, solute)}
 site <-  con_prep$site_code[1]
+
+
 # summarize data
-if(nrow(con_prep)>4){
-con_ann <- make_mean_annual(con_prep)
-}else{next}
+if(data_type == 'con'){
+    if(nrow(con_prep)>4){
+    con_ann <- make_mean_annual(con_prep)
+    }else{next}
+}else{
+   if(nrow(con_prep)>3){
+    con_ann <- con_prep
+    }else{next} 
+}
 
 if(nrow(con_ann) > 2){
 # check for trends
@@ -180,7 +190,7 @@ return(out_list)
 } # end function
 
 solute <- 'DOC'
-out_list <- ingest_national(site_list, solute)
+out_list <- ingest_national(site_list, solute, 'con')
 out_res <- out_list[[2]]
 out_data <- out_list[[1]]
 
@@ -214,14 +224,14 @@ inner <- out_res %>%
 
 inner$status[inner$significant == 1 & inner$slope > 0] <- 'Increasing'
 inner$status[inner$significant == 0] <- 'No sig. trend'
-inner$status[inner$significant == 1 & inner$slope < 0] <- 'decreasing'
+inner$status[inner$significant == 1 & inner$slope < 0] <- 'Decreasing'
 inner
 }
 
 map_data <- make_map_data(out_res)
 
 # set color ramps
-colors = colorRampPalette(c('blue', 'gray', 'darkred'))
+# colors = colorRampPalette(c('blue', 'gray', 'darkred'))
 
 # apply mapping and plotting
 make_map <- function(map_data){
@@ -234,8 +244,9 @@ mapview(map_data,
                zcol = 'status',
                cex = 'n',
                label = 'domain',
-               col.regions = c('blue', 'gray', 'darkred'),
-               popup = leafpop::popupGraph(map_data$mean_plots))
+               col.regions = c('blue', 'darkred', 'gray'),
+               popup = leafpop::popupGraph(map_data$mean_plots),
+               layer.name = paste0(solute, ' Trend'))
 }
 ```
 
@@ -246,11 +257,11 @@ m1 <- make_map(map_data)
 m1
 ```
 
-# Apply to sulfate
+## Apply to sulfate
 
 ```{r}
 solute <- 'SO4_S'
-out_list_so4 <- ingest_national(site_list, solute)
+out_list_so4 <- ingest_national(site_list, solute, 'con')
 out_res <- out_list_so4[[2]]
 out_data <- out_list_so4[[1]]
 
@@ -261,11 +272,11 @@ m2 <- out_res %>%
 m2
 ```
 
-# Apply to pH
+## Apply to pH
 
 ```{r}
 solute <- 'pH'
-out_list_ph <- ingest_national(site_list, solute)
+out_list_ph <- ingest_national(site_list, solute, 'con')
 out_res <- out_list_ph[[2]]
 out_data <- out_list_ph[[1]]
 
@@ -275,3 +286,76 @@ m3 <- out_res %>%
 
 m3
 ```
+
+# Loads
+
+Now to repeat with loads. Making a function ('prep_flux_data') to make flux data work with previous functions. 
+
+```{r}
+
+domain_list <- list.dirs(here('ms_flux_annual'), recursive = F, full.names = F)
+
+domain_list <- domain_list[!domain_list %in% c('arctic', 'mcmurdo', 'krycklan', 'luquillo')]
+
+site_list <- as.character()
+for(i in domain_list){
+    loop_sites <- list.files(here('ms_flux_annual', i, 'stream_flux'),
+                                       pattern = '.feather$', full.names = T)
+    site_list <- c(site_list,loop_sites)
+}
+
+prep_flux_data <- function(site_path, solute){
+    target_sol <- paste0('GN_', solute)
+    
+    data <- read_feather(site_path) %>%
+        filter(var == target_sol) %>%
+        na.omit()
+    
+    if(nrow(data > 1)){
+    data <- data %>%
+        dplyr::filter(ms_recommended == 1) %>%
+        select(site_code, wy, val) %>%
+        na.omit()}
+    
+    data
+    
+    }
+
+for(i in 1:length(site_list)){
+site_path <- site_list[i]
+prep_flux_data(site_path, 'DOC')
+}
+```
+
+Now generate maps. 
+
+## DOC Loads
+
+```{r}
+solute <- 'DOC'
+out_list <- ingest_national(site_list, solute, 'flux')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m4 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m4
+```
+
+## Sulfate Loads
+
+```{r}
+solute <- 'SO4_S'
+out_list <- ingest_national(site_list, solute, 'flux')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m5 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m5
+```
+
