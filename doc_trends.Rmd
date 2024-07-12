@@ -160,8 +160,6 @@ if(nrow(con_ann) > 2){
 ss <- sens.slope(con_ann$val)
 ss
 
-sig_check <- ss$p.value < 0.05
-
 slope_est <- signif(ss$estimates[[1]], digits = 3)
 
 loop_res <- tibble(site_code = site,
@@ -207,15 +205,23 @@ sc_plotter <- function(site){
 
 # make map data
 make_map_data <- function(out_res){
-out_res %>%
+inner <- out_res %>%
+    mutate(significant = p < 0.05,
+           status = 0) %>%
     left_join(site_data, by = 'site_code') %>%
     filter(!is.na(longitude), !is.na(latitude)) %>%
-    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)}
+    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
+
+inner$status[inner$significant == 1 & inner$slope > 0] <- 'Increasing'
+inner$status[inner$significant == 0] <- 'No sig. trend'
+inner$status[inner$significant == 1 & inner$slope < 0] <- 'decreasing'
+inner
+}
 
 map_data <- make_map_data(out_res)
 
 # set color ramps
-colors = colorRampPalette(c('blue', 'dark red'))
+colors = colorRampPalette(c('blue', 'gray', 'darkred'))
 
 # apply mapping and plotting
 make_map <- function(map_data){
@@ -225,10 +231,10 @@ map_data <- map_data %>%
     mutate(mean_plots = map(site_code, sc_plotter))
 
 mapview(map_data,
-               zcol = 'slope',
+               zcol = 'status',
                cex = 'n',
                label = 'domain',
-               col.regions= colors,
+               col.regions = c('blue', 'gray', 'darkred'),
                popup = leafpop::popupGraph(map_data$mean_plots))
 }
 ```
@@ -244,9 +250,9 @@ m1
 
 ```{r}
 solute <- 'SO4_S'
-out_list <- ingest_national(site_list, solute)
-out_res <- out_list[[2]]
-out_data <- out_list[[1]]
+out_list_so4 <- ingest_national(site_list, solute)
+out_res <- out_list_so4[[2]]
+out_data <- out_list_so4[[1]]
 
 m2 <- out_res %>%
     make_map_data()%>%
@@ -259,9 +265,9 @@ m2
 
 ```{r}
 solute <- 'pH'
-out_list <- ingest_national(site_list, solute)
-out_res <- out_list[[2]]
-out_data <- out_list[[1]]
+out_list_ph <- ingest_national(site_list, solute)
+out_res <- out_list_ph[[2]]
+out_data <- out_list_ph[[1]]
 
 m3 <- out_res %>%
     make_map_data()%>%
