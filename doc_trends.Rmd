@@ -1,0 +1,362 @@
+---
+title: "DOC Trend Exploration"
+author: "Nick Gubbins"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      include = TRUE,
+                      tidy.opts = list(width.cutoff = 60), 
+                      #tidy = TRUE,
+                      warning = F,
+                      message = F)
+# needed packages
+library(here)
+library(tidyverse)
+library(lubridate)
+library(mapview)
+mapviewOptions(fgb = FALSE, georaster = FALSE)
+library(sf)
+library(tigris)
+library(RColorBrewer)
+library(leaflet)
+library(sp)
+library(ggthemes)
+library(macrosheds)
+library(tidyr)
+library(trend)
+library(feather)
+library(lfstat)
+library(mapview)
+
+# set color ramps
+colors = colorRampPalette(c('blue', 'dark red'))
+```
+# Concentration
+
+## Set up MS data
+
+First find all data downloaded to MS directory.
+
+```{r}
+macrosheds_root <- here('ms_data')
+
+
+site_data <- ms_load_sites()
+domain_list <- list.dirs(macrosheds_root, recursive = F, full.names = F)
+```
+
+Then remove any domains outside of the CONUS.
+
+```{r}
+domain_list <- domain_list[!domain_list %in% c('arctic', 'mcmurdo', 'krycklan', 'luquillo')]
+```
+
+
+Make list of all site files.
+
+```{r}
+site_list <- as.character()
+for(i in domain_list){
+    loop_sites <- list.files(here('ms_data', i, 'stream_chemistry'),
+                                       pattern = '.feather$', full.names = T)
+    site_list <- c(site_list,loop_sites)
+    }
+```
+
+## Intro case at HJ Andrews
+
+Load data for a single site from HJ Andrews to show workflow
+
+```{r}
+site_path <- site_list[50]
+solute <- 'DOC'
+
+prep_con_data <- function(site_path, solute){
+    target_sol <- paste0('GN_', solute)
+    read_feather(site_path) %>%
+        filter(var == target_sol) %>%
+        select(site_code, datetime, val) %>%
+        na.omit()}
+con_prep <- prep_con_data(site_path, solute)
+```
+
+Summarize to annual mean data and filter out years made from less than 12 observations
+
+```{r}
+nrow(con_prep)
+ 
+make_mean_annual <- function(con_prep){con_prep %>%
+        mutate(wy = as.integer(as.character(water_year(datetime, origin = 'usgs')))) %>%
+        group_by(wy) %>%
+        summarize(n = n(),
+                  val = mean(val)) %>%
+    filter(n > 11)}
+
+con_ann <- make_mean_annual(con_prep)
+
+nrow(con_ann)
+```
+Plot data
+
+```{r}
+plot_annual <- function(con_ann, solute){ggplot(con_ann, aes(x = wy, y = val))+
+    geom_point() +
+        labs(y = paste0('Mean annual ', solute))+
+    theme_few()}
+
+plot_ann <- plot_annual(con_ann, solute)
+plot_ann
+```
+
+Now detect trends and add to the plot
+
+```{r}
+ss <- sens.slope(con_ann$val)
+ss
+
+sig_check <- ss$p.value < 0.05
+
+slope_est <- signif(ss$estimates[[1]], digits = 3) 
+
+plot_ann <- plot_ann +
+                labs(caption = paste("Sen's slope of", slope_est,
+                     'from', nrow(con_ann), 'years of data.'))
+
+plot_ann
+```
+
+## Make national DOC map
+
+Now apply to all sites in the list
+
+```{r}
+ingest_national <- function(site_list, solute, data_type){
+out_list <- list()
+out_res <- tibble(site_code = as.character(),
+                    slope = as.numeric(),
+                    p = as.numeric(),
+                    n = as.numeric())
+out_data <- tibble(site_code = as.character(),
+                   wy = as.numeric(),
+                   n = as.numeric(),
+                   doc = as.numeric())
+for(i in 1:length(site_list)){
+# load  and prep data
+site_path <- site_list[i]
+
+if(data_type == 'con'){con_prep <- prep_con_data(site_path, solute)}
+else{ con_prep <- prep_flux_data(site_path, solute)}
+site <-  con_prep$site_code[1]
+
+
+# summarize data
+if(data_type == 'con'){
+    if(nrow(con_prep)>4){
+    con_ann <- make_mean_annual(con_prep)
+    }else{next}
+}else{
+   if(nrow(con_prep)>3){
+    con_ann <- con_prep
+    }else{next} 
+}
+
+if(nrow(con_ann) > 2){
+# check for trends
+ss <- sens.slope(con_ann$val)
+ss
+
+slope_est <- signif(ss$estimates[[1]], digits = 3)
+
+loop_res <- tibble(site_code = site,
+                    slope = ss$estimates[[1]],
+                    p = ss$p.value[[1]],
+                    n = nrow(con_ann))
+
+loop_data <- con_ann %>%
+    mutate(site_code = site)
+
+}else{next}
+#save to frames
+out_data <- rbind(out_data, loop_data)
+out_res <- rbind(out_res,loop_res)
+}
+out_list <- list(out_data, out_res)
+return(out_list)
+} # end function
+
+solute <- 'DOC'
+out_list <- ingest_national(site_list, solute, 'con')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+```
+
+Make functions to plot and map results
+
+```{r}
+# make plotter for popups
+sc_plotter <- function(site){
+
+  data <-filter(out_data, site_code == site)
+  slope_est <- signif(out_res$slope[out_res$site_code == site], digits = 2)
+  p <- signif(out_res$p[out_res$site_code == site], digits = 2)
+
+  p <- plot_annual(data, solute) +
+                labs(caption = paste("Sen's slope of", slope_est,
+                     'from', nrow(data), 'years of data. p =', p),
+                     title = site)
+  return(p)
+}
+
+# make map data
+make_map_data <- function(out_res){
+inner <- out_res %>%
+    mutate(significant = p < 0.05,
+           status = 0) %>%
+    left_join(site_data, by = 'site_code') %>%
+    filter(!is.na(longitude), !is.na(latitude),
+           ws_status != "experimental" ) %>%
+    st_as_sf(., coords = c('longitude', 'latitude'), crs = 4326)
+
+inner$status[inner$significant == 1 & inner$slope > 0] <- 'Increasing'
+inner$status[inner$significant == 0] <- 'No sig. trend'
+inner$status[inner$significant == 1 & inner$slope < 0] <- 'Decreasing'
+inner
+}
+
+map_data <- make_map_data(out_res)
+
+# set color ramps
+# colors = colorRampPalette(c('blue', 'gray', 'darkred'))
+
+# apply mapping and plotting
+make_map <- function(map_data){
+p_all <- lapply(map_data$site_code, sc_plotter)
+
+map_data <- map_data %>%
+    mutate(mean_plots = map(site_code, sc_plotter))
+
+mapview(map_data,
+               zcol = 'status',
+               cex = 'n',
+               label = 'domain',
+               col.regions = c('blue', 'darkred', 'gray'),
+               popup = leafpop::popupGraph(map_data$mean_plots),
+               layer.name = paste0(solute, ' Trend'))
+}
+```
+
+Make the map!
+
+```{r}
+m1 <- make_map(map_data)
+m1
+```
+
+## Apply to sulfate
+
+```{r}
+solute <- 'SO4_S'
+out_list_so4 <- ingest_national(site_list, solute, 'con')
+out_res <- out_list_so4[[2]]
+out_data <- out_list_so4[[1]]
+
+m2 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m2
+```
+
+## Apply to pH
+
+```{r}
+solute <- 'pH'
+out_list_ph <- ingest_national(site_list, solute, 'con')
+out_res <- out_list_ph[[2]]
+out_data <- out_list_ph[[1]]
+
+m3 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m3
+```
+
+# Loads
+
+Now to repeat with loads. Making a function ('prep_flux_data') to make flux data work with previous functions. 
+
+```{r}
+
+domain_list <- list.dirs(here('ms_flux_annual'), recursive = F, full.names = F)
+
+domain_list <- domain_list[!domain_list %in% c('arctic', 'mcmurdo', 'krycklan', 'luquillo')]
+
+site_list <- as.character()
+for(i in domain_list){
+    loop_sites <- list.files(here('ms_flux_annual', i, 'stream_flux'),
+                                       pattern = '.feather$', full.names = T)
+    site_list <- c(site_list,loop_sites)
+}
+
+prep_flux_data <- function(site_path, solute){
+    target_sol <- paste0('GN_', solute)
+    
+    data <- read_feather(site_path) %>%
+        filter(var == target_sol) %>%
+        na.omit()
+    
+    if(nrow(data > 1)){
+    data <- data %>%
+        dplyr::filter(ms_recommended == 1) %>%
+        select(site_code, wy, val) %>%
+        na.omit()}
+    
+    data
+    
+    }
+
+for(i in 1:length(site_list)){
+site_path <- site_list[i]
+prep_flux_data(site_path, 'DOC')
+}
+```
+
+Now generate maps. 
+
+## DOC Loads
+
+```{r}
+solute <- 'DOC'
+out_list <- ingest_national(site_list, solute, 'flux')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m4 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m4
+```
+
+## Sulfate Loads
+
+```{r}
+solute <- 'SO4_S'
+out_list <- ingest_national(site_list, solute, 'flux')
+out_res <- out_list[[2]]
+out_data <- out_list[[1]]
+
+m5 <- out_res %>%
+    make_map_data()%>%
+    make_map()
+
+m5
+```
+
