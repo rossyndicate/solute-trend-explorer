@@ -1,5 +1,5 @@
 ---
-title: "DOC Trend Exploration"
+title: "Weathering Trend Exploration"
 author: "Nick Gubbins"
 output: html_document
 editor_options: 
@@ -31,7 +31,8 @@ library(tidyr)
 library(trend)
 library(feather)
 library(lfstat)
-library(mapview)
+library(tmap)
+library(usmap)
 
 # set color ramps
 colors = colorRampPalette(c('blue', 'dark red'))
@@ -235,40 +236,72 @@ map_data <- make_map_data(out_res)
 # colors = colorRampPalette(c('blue', 'gray', 'darkred'))
 
 # apply mapping and plotting
-make_map <- function(map_data){
+make_map <- function(map_data, solute){
 p_all <- lapply(map_data$site_code, sc_plotter)
 
 map_data <- map_data %>%
-    mutate(mean_plots = map(site_code, sc_plotter))
+    mutate(mean_plots = map(site_code, sc_plotter),
+           Status=fct_relevel(status,c("Decreasing","No sig. trend","Increasing")))
 
-mapview(map_data,
-               zcol = 'status',
-               cex = 'n',
-               label = 'domain',
-               col.regions = c('blue', 'darkred', 'gray'),
-               popup = leafpop::popupGraph(map_data$mean_plots),
-               layer.name = paste0(solute, ' Trend'))
+
+
+# mapview(map_data,
+#                zcol = 'status',
+#                cex = 'n',
+#                label = 'domain',
+#                col.regions = c('blue', 'darkred', 'gray'),
+#                popup = leafpop::popupGraph(map_data$mean_plots),
+#                layer.name = paste0(solute, ' Trend'))
+
+
+title_string <- paste0(solute, ' Trends')
+
+tmap_mode("plot")
+## tmap mode set to plotting
+
+# Create a base map of the U.S. with tmap
+tm_shape(usmap::us_map()) +
+  tm_polygons() + # Base US map
+  tm_shape(map_data) +
+  tm_symbols(
+    col = "slope", # Color by effect size
+    title.col = "Sen's slope",
+    #shape = "significant", # Different shape for significant points
+    #shapes = c(21, 24), # 21 (circle), 24 (cross-hatch-like triangle)
+    border.col = "black",
+    size = 0.5,
+    palette = "-RdBu", # Diverging palette for effect size
+    legend.col.show = TRUE,
+    legend.shape.show = TRUE
+  ) +
+  tm_layout(
+    legend.outside = TRUE,
+    legend.outside.position = "right",
+    title = title_string
+  )
+
+
 }
 ```
 
 Make the map!
 
 ```{r}
-m1 <- make_map(map_data)
+m1 <- make_map(map_data, solute)
 m1
 ```
 
 ## Apply to sulfate
 
 ```{r}
-solute <- 'SO4_S'
-out_list_so4 <- ingest_national(site_list, solute, 'con')
-out_res <- out_list_so4[[2]]
-out_data <- out_list_so4[[1]]
+solute <- 'TP'
+out_list_sio2 <- ingest_national(site_list, solute, 'con')
+out_res <- out_list_sio2[[2]]
+out_data <- out_list_sio2[[1]]
 
 m2 <- out_res %>%
     make_map_data()%>%
-    make_map()
+    make_map(., solute)
 
 m2
 ```
@@ -283,7 +316,7 @@ out_data <- out_list_ph[[1]]
 
 m3 <- out_res %>%
     make_map_data()%>%
-    make_map()
+    make_map(., solute)
 
 m3
 ```
@@ -340,23 +373,24 @@ out_data <- out_list[[1]]
 
 m4 <- out_res %>%
     make_map_data()%>%
-    make_map()
+    make_map(., solute)
 
 m4
 ```
 
-## Sulfate Loads
+## TP Loads
 
 ```{r}
-solute <- 'SO4_S'
+solute <- 'TP'
 out_list <- ingest_national(site_list, solute, 'flux')
 out_res <- out_list[[2]]
 out_data <- out_list[[1]]
 
 m5 <- out_res %>%
     make_map_data()%>%
-    make_map()
+    make_map(., solute)
 
 m5
 ```
+
 
